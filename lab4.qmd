@@ -1,0 +1,587 @@
+---
+title: "Trust in Science: Global Patterns & Change"
+server: shiny
+format:
+  dashboard:
+    logo: images/Wellcome_Trust_logo.svg
+    orientation: rows
+    nav-buttons: [linkedin, github]
+    linkedin: www.linkedin.com/in/jacob-u-perez
+    github: https://github.com/jacobperez-debug
+    theme: journal
+---
+
+```{r}
+#| label: libraries
+
+library(ggplot2)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(sf)
+library(leaflet)
+library(shiny)
+```
+
+```{r}
+#| label: read in data
+#| context: setup
+
+library(tidyverse)
+library(readxl)
+
+wgm2018 <- read_excel(here::here("wgm2018-dataset-crosstabs-all-countries.xlsx"), sheet = 2)
+
+wgm2018.3 <- read_excel(here::here("wgm2018-dataset-crosstabs-all-countries.xlsx"), sheet = 3)
+
+wgm2020 <- read.csv(here::here("wgm_full_wave2_public_file_final (1)_csv.csv"))
+```
+
+```{r}
+df_raw_2018 <- tibble(x = str_split(wgm2018.3$`Variable Type & Codes*`[1], ',\\s')[[1]])
+
+df_countries_2018 <- df_raw_2018 %>%
+  separate_wider_delim(x, delim = '=', names = c("country_id", "country_name")) %>%
+  mutate(country_id = as.numeric(country_id))
+
+df_wgm2018 <-  left_join(wgm2018, df_countries_2018, by = c("WP5" = "country_id")) %>%
+  mutate(region = case_when(
+    Regions_Report %in% c(1, 2, 4, 5) ~ "Africa",
+    Regions_Report %in% c(6, 7, 8) ~ "Americas",
+    Regions_Report %in% c(9, 10, 11, 12, 18) ~ "Asia",
+    Regions_Report %in% c(3, 13) ~ "Middle East and North Africa",
+    Regions_Report %in% c(14) ~ "Former Soviet Union",
+    Regions_Report %in% c(15, 16, 17, 0) ~ "Europe"
+  )) %>%
+  select(country_name, region, wgt, Q11B, Q11C, Q16)
+```
+
+```{r}
+df_wgm2020 <- wgm2020 %>%
+  mutate(region = case_when(
+    Global11Regions %in% c(11) ~ "Africa",
+    Global11Regions %in% c(8, 9) ~ "Americas",
+    Global11Regions %in% c(4, 6, 7, 5) ~ "Asia",
+    Global11Regions %in% c(10) ~ "Middle East and North Africa",
+    Global11Regions %in% c(3) ~ "Russia/Caucasus/Central Asia",
+    Global11Regions %in% c(1, 2) ~ "Europe"
+  )) %>%
+  select(COUNTRYNEW, region, WGT, W5B, W5C, W8)
+```
+
+```{r}
+trust2018 <- df_wgm2018 %>%
+  filter(!is.na(Q11C)) %>%
+  mutate(
+    is_1_or_2 = if_else(Q11C %in% c(1, 2), 1, 0),
+    weighted_is_1_or_2 = wgt * is_1_or_2
+  ) %>%
+  group_by(country_name, region) %>%
+  summarise(
+    percent = 100 * sum(weighted_is_1_or_2, na.rm = TRUE) / sum(wgt, na.rm = TRUE)
+  )
+```
+
+```{r}
+trust2020 <- df_wgm2020 %>%
+  filter(!is.na(W5C)) %>%
+  mutate(
+    is_1_or_2 = if_else(W5C %in% c(1, 2), 1, 0),
+    weighted_is_1_or_2 = WGT * is_1_or_2
+  ) %>%
+  group_by(COUNTRYNEW, region) %>%
+  summarise(
+    percent = 100 * sum(weighted_is_1_or_2, na.rm = TRUE) / sum(WGT, na.rm = TRUE)
+  )
+```
+
+# {.sidebar}
+
+```{r}
+checkboxGroupInput("region_select", "Select Regions", 
+                   choices = unique(trust2018$region),
+                   selected = unique(trust2018$region))
+
+sliderInput("change_range", "Percent Change Range",
+            min = -30, max = 30, value = c(-10, 10))
+```
+
+# Trust Across Regions
+
+## Global Trust in Scientists Facts (Row 1) 
+
+Explore how attitudes toward scientists and scientific information shifted between 2018 and 2020.
+
+## Global Trust in Scientists Plots (Row 2) {height = 70%}
+
+### 2018 {.tabset .tabset-dropdown}
+
+#### Global
+
+```{r}
+ggplot(trust2018, aes(x = percent)) +
+  geom_histogram(binwidth = 3, fill = "#65a345", color = "white") +
+  labs(
+    title = "Distribution of Percentages",
+    x = "% of Responses",
+    y = NULL
+  ) + 
+  theme_minimal() + 
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+```
+
+#### Africa
+
+```{r}
+trust2018 %>% 
+  filter(region == "Africa") %>%
+  ggplot(aes(x = percent)) + 
+  geom_histogram(binwidth = 3, fill = "#65a345", color = "white") +
+  labs(
+    title = "Distribution of Percentages",
+    x = "% of Responses",
+    y = NULL
+  ) + 
+  theme_minimal() + 
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+```
+
+#### Americas
+
+```{r}
+trust2018 %>% 
+  filter(region == "Americas") %>%
+  ggplot(aes(x = percent)) + 
+  geom_histogram(binwidth = 3, fill = "#65a345", color = "white") +
+  labs(
+    title = "Distribution of Percentages",
+    x = "% of Responses",
+    y = NULL
+  ) + 
+  theme_minimal() + 
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+```
+
+#### Asia
+
+```{r}
+trust2018 %>% 
+  filter(region == "Asia") %>%
+  ggplot(aes(x = percent)) + 
+  geom_histogram(binwidth = 3, fill = "#65a345", color = "white") +
+  labs(
+    title = "Distribution of Percentages",
+    x = "% of Responses",
+    y = NULL
+  ) + 
+  theme_minimal() + 
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+```
+
+#### Europe
+
+```{r}
+trust2018 %>% 
+  filter(region == "Europe") %>%
+  ggplot(aes(x = percent)) + 
+  geom_histogram(binwidth = 3, fill = "#65a345", color = "white") +
+  labs(
+    title = "Distribution of Percentages",
+    x = "% of Responses",
+    y = NULL
+  ) + 
+  theme_minimal() + 
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+```
+
+#### Former Soviet Union
+
+```{r}
+trust2018 %>% 
+  filter(region == "Former Soviet Union") %>%
+  ggplot(aes(x = percent)) + 
+  geom_histogram(binwidth = 3, fill = "#65a345", color = "white") +
+  labs(
+    title = "Distribution of Percentages",
+    x = "% of Responses",
+    y = NULL
+  ) + 
+  theme_minimal() + 
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+```
+
+#### Middle East and North Africa
+
+```{r}
+trust2018 %>% 
+  filter(region == "Middle East and North Africa") %>%
+  ggplot(aes(x = percent)) + 
+  geom_histogram(binwidth = 3, fill = "#65a345", color = "white") +
+  labs(
+    title = "Distribution of Percentages",
+    x = "% of Responses",
+    y = NULL
+  ) + 
+  theme_minimal() + 
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+```
+
+### 2020 {.tabset .tabset-dropdown}
+
+#### Global 
+
+```{r}
+ggplot(trust2020, aes(x = percent)) +
+  geom_histogram(binwidth = 3, fill = "#65a345", color = "white") +
+  labs(
+    title = "Distribution of Percentages",
+    x = "% of Responses",
+    y = NULL
+  ) + 
+  theme_minimal() + 
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+```
+
+#### Africa
+
+```{r}
+trust2020 %>% 
+  filter(region == "Africa") %>%
+  ggplot(aes(x = percent)) + 
+  geom_histogram(binwidth = 3, fill = "#65a345", color = "white") +
+  labs(
+    title = "Distribution of Percentages",
+    x = "% of Responses",
+    y = NULL
+  ) + 
+  theme_minimal() + 
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+```
+
+#### Americas
+
+```{r}
+trust2020 %>% 
+  filter(region == "Americas") %>%
+  ggplot(aes(x = percent)) + 
+  geom_histogram(binwidth = 3, fill = "#65a345", color = "white") +
+  labs(
+    title = "Distribution of Percentages",
+    x = "% of Responses",
+    y = NULL
+  ) + 
+  theme_minimal() + 
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+```
+
+#### Asia
+
+```{r}
+trust2020 %>% 
+  filter(region == "Asia") %>%
+  ggplot(aes(x = percent)) + 
+  geom_histogram(binwidth = 3, fill = "#65a345", color = "white") +
+  labs(
+    title = "Distribution of Percentages",
+    x = "% of Responses",
+    y = NULL
+  ) + 
+  theme_minimal() + 
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+```
+
+#### Europe
+
+```{r}
+trust2020 %>% 
+  filter(region == "Europe") %>%
+  ggplot(aes(x = percent)) + 
+  geom_histogram(binwidth = 3, fill = "#65a345", color = "white") +
+  labs(
+    title = "Distribution of Percentages",
+    x = "% of Responses",
+    y = NULL
+  ) + 
+  theme_minimal() + 
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+```
+
+#### Middle East and North Africa
+
+```{r}
+trust2020 %>% 
+  filter(region == "Middle East and North Africa") %>%
+  ggplot(aes(x = percent)) + 
+  geom_histogram(binwidth = 3, fill = "#65a345", color = "white") +
+  labs(
+    title = "Distribution of Percentages",
+    x = "% of Responses",
+    y = NULL
+  ) + 
+  theme_minimal() + 
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+```
+
+#### Russia/Caucasus/Central Asia
+
+```{r}
+trust2020 %>% 
+  filter(region == "Russia/Caucasus/Central Asia") %>%
+  ggplot(aes(x = percent)) + 
+  geom_histogram(binwidth = 3, fill = "#65a345", color = "white") +
+  labs(
+    title = "Distribution of Percentages",
+    x = "% of Responses",
+    y = NULL
+  ) + 
+  theme_minimal() + 
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+```
+
+## Global Trust in Scientists Cards (Row 3)
+
+### Card 1 {orientation = "columns"}
+
+#### Facts {orientation = "columns}
+
+```{r}
+trusted_by_2018 <- df_wgm2018 %>%
+  filter(!is.na(Q11C)) %>%
+  mutate(
+    trusted = if_else(Q11C %in% c(1, 2), 1, 0),
+    weighted_trusted = wgt * trusted
+  ) %>%
+  group_by(region) %>%
+  summarise(
+    percent_trusted = 100 * sum(weighted_trusted, na.rm = TRUE) / sum(wgt, na.rm = TRUE)
+  ) %>%
+  mutate(
+    Percent = round(percent_trusted, 2),
+    Region = region
+  ) %>%
+  select(Region, Percent)
+
+knitr::kable(trusted_by_2018)
+```
+
+### Card 2 
+
+```{r}
+#| content: valuebox
+#| title: "% in 2018"
+#| color: info
+
+value1 <- df_wgm2018 %>%
+  filter(!is.na(Q11C)) %>%
+  summarise(
+    trust_percent = 100 * sum(wgt[Q11C %in% c(1, 2)]) / sum(wgt)
+  )
+
+list(
+  icon = "heart-pulse",
+  value = round(value1$trust_percent, 2)
+)
+```
+
+```{r}
+#| content: valuebox
+#| title: "% in 2020"
+#| color: info
+
+value2 <- df_wgm2020 %>%
+  filter(!is.na(W5C)) %>%
+  summarise(
+    trust_percent = 100 * sum(WGT[W5C %in% c(1, 2)]) / sum(WGT)
+  )
+
+list(
+  icon = "virus",
+  value = round(value2$trust_percent, 2)
+)
+```
+
+### Card 3 
+
+```{r}
+trusted_by_2020 <- df_wgm2020 %>%
+  filter(!is.na(W5C)) %>%
+  mutate(
+    trusted = if_else(W5C %in% c(1, 2), 1, 0),
+    weighted_trusted = WGT * trusted
+  ) %>%
+  group_by(region) %>%
+  summarise(
+    percent_trusted = 100 * sum(weighted_trusted, na.rm = TRUE) / sum(WGT, na.rm = TRUE)
+  ) %>%
+  mutate(
+    Percent = round(percent_trusted, 2),
+    Region = region
+  ) %>%
+  select(Region, Percent)
+
+knitr::kable(trusted_by_2020)
+```
+
+# Country Trends Over Time
+
+```{r}
+trust2020_clean <- trust2020 %>%
+  rename(
+    country_name = COUNTRYNEW,
+    percent_2020 = percent
+  )
+
+trust2018_clean <- trust2018 %>%
+  rename(percent_2018 = percent) %>%
+  mutate(country_name = case_when(
+    country_name == "Bosnia and Herzegovina" ~ "Bosnia Herzegovina",
+    TRUE ~ country_name
+  ))
+
+trust_change <- trust2020_clean %>%
+  inner_join(trust2018_clean, by = "country_name") %>%
+  mutate(change = percent_2020 - percent_2018) %>%
+  mutate(country_name = case_when(
+    country_name == "United States" ~ "United States of America",
+    country_name == "Dominican Republic" ~ "Dominican Rep.",
+    country_name == "Ivory Coast" ~ "Côte d'Ivoire",
+    country_name == "Czech Republic" ~ "Czechia",
+    country_name == "Bosnia Herzegovina" ~ "Bosnia and Herz.",
+    TRUE ~ country_name
+  )) %>%
+  select(country_name, region.x, change, percent_2018, percent_2020)
+```
+
+
+## Global Map (Row 1) {height = 70%}
+
+```{r}
+# I used ChatGPT to help me write this code chunk
+
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+
+world_trust <- world %>%
+  left_join(trust_change, by = c("name" = "country_name"))
+
+pal <- colorNumeric(palette = "RdYlBu", domain = world_trust$change, reverse = TRUE)
+
+leaflet(world_trust) %>%
+  addTiles() %>%
+  addPolygons(
+    fillColor = ~pal(change),
+    fillOpacity = 0.8,
+    color = "white",
+    weight = 0.5,
+    popup = ~paste0("<strong>", name, "</strong><br>",
+                    "Trust Change: ", round(change, 2), "%")
+  ) %>%
+  addLegend(pal = pal, values = ~change, title = "Change in Trust (2018–2020)")
+
+```
+
+## Country Trust Tables and Cards (Row 2) {height = 30%}
+
+### Country Tables {orientation = "column}
+
+```{r}
+#| message: false
+
+top5 <- trust_change %>%
+  arrange(desc(change)) %>%
+  head(5) %>%
+  mutate(
+    Country = country_name,
+    "Percent Change" = change
+    ) %>%
+  select(Country, `Percent Change`)
+
+knitr::kable(top5[, 2:3], digits = 2)
+```
+
+```{r}
+#| message: false
+
+bot5 <- trust_change %>%
+  arrange(change) %>%
+  select(country_name, change) %>%
+  head(5) %>%
+  mutate(
+    Country = country_name,
+    "Percent Change" = change
+    ) %>%
+  select(Country, `Percent Change`)
+
+knitr::kable(bot5[, 2:3], digits = 2)
+```
+
+### Global Change Valuebox
+
+```{r}
+#| content: valuebox
+#| title: "% global change per country"
+#| color: info
+
+global_change <- mean(trust_change$change, na.rm = TRUE)
+
+list(
+  icon = "globe",
+  value = round(global_change, digits = 2)
+)
+```
+
+### Countries Improved Valuebox
+
+```{r}
+#| content: valuebox
+#| title: "# of countries improved"
+#| color: success
+
+n_improved <- sum(trust_change$change > 0, na.rm = TRUE)
+
+list(
+  icon = "globe-americas",
+  value = n_improved
+)
+```
