@@ -17,129 +17,25 @@ editor: visual
 #| context: setup
 
 library(ggplot2)
-library(rnaturalearth)
-library(rnaturalearthdata)
-library(sf)
-library(leaflet)
 library(shiny)
 library(shinydashboard)
+library(tidyverse)
 ```
 
 ```{r}
 #| label: read in data
 #| context: setup
 
-library(tidyverse)
-library(readxl)
-
-wgm2018 <- read_excel(here::here("wgm2018-dataset-crosstabs-all-countries.xlsx"), sheet = 2)
-
-wgm2018.3 <- read_excel(here::here("wgm2018-dataset-crosstabs-all-countries.xlsx"), sheet = 3)
-
-wgm2020 <- read.csv(here::here("wgm_full_wave2_public_file_final (1)_csv.csv"))
-```
-
-```{r}
-#| context: setup
-
-df_raw_2018 <- tibble(x = str_split(wgm2018.3$`Variable Type & Codes*`[1], ',\\s')[[1]])
-
-df_countries_2018 <- df_raw_2018 %>%
-  separate_wider_delim(x, delim = '=', names = c("country_id", "country_name")) %>%
-  mutate(country_id = as.numeric(country_id))
-
-df_wgm2018 <-  left_join(wgm2018, df_countries_2018, by = c("WP5" = "country_id")) %>%
-  mutate(region = case_when(
-    Regions_Report %in% c(1, 2, 4, 5) ~ "Africa",
-    Regions_Report %in% c(6, 7, 8) ~ "Americas",
-    Regions_Report %in% c(9, 10, 11, 12, 18) ~ "Asia",
-    Regions_Report %in% c(3, 13) ~ "Middle East and North Africa",
-    Regions_Report %in% c(14) ~ "Former Soviet Union",
-    Regions_Report %in% c(15, 16, 17, 0) ~ "Europe"
-  )) %>%
-  select(country_name, region, wgt, Q11B, Q11C, Q16)
-```
-
-```{r}
-#| context: setup
-
-df_wgm2020 <- wgm2020 %>%
-  mutate(region = case_when(
-    Global11Regions %in% c(11) ~ "Africa",
-    Global11Regions %in% c(8, 9) ~ "Americas",
-    Global11Regions %in% c(4, 6, 7, 5) ~ "Asia",
-    Global11Regions %in% c(10) ~ "Middle East and North Africa",
-    Global11Regions %in% c(3) ~ "Russia/Caucasus/Central Asia",
-    Global11Regions %in% c(1, 2) ~ "Europe"
-  )) %>%
-  select(COUNTRYNEW, region, WGT, W5B, W5C, W8)
-```
-
-```{r}
-#| context: setup
-
-trust2018 <- df_wgm2018 %>%
-  filter(!is.na(Q11C)) %>%
-  mutate(
-    is_1_or_2 = if_else(Q11C %in% c(1, 2), 1, 0),
-    weighted_is_1_or_2 = wgt * is_1_or_2
-  ) %>%
-  group_by(country_name, region) %>%
-  summarise(
-    percent = 100 * sum(weighted_is_1_or_2, na.rm = TRUE) / sum(wgt, na.rm = TRUE)
-  )
-```
-
-```{r}
-#| context: setup
-
-trust2020 <- df_wgm2020 %>%
-  filter(!is.na(W5C)) %>%
-  mutate(
-    is_1_or_2 = if_else(W5C %in% c(1, 2), 1, 0),
-    weighted_is_1_or_2 = WGT * is_1_or_2
-  ) %>%
-  group_by(COUNTRYNEW, region) %>%
-  summarise(
-    percent = 100 * sum(weighted_is_1_or_2, na.rm = TRUE) / sum(WGT, na.rm = TRUE)
-  )
-```
-
-```{r}
-#| context: setup
-
-russia_caucasus_countries <- c("Georgia", "Kazakhstan", "Kyrgyzstan", "Russia", "Tajikistan", "Uzbekistan")
-europe_countries <- c("Belarus", "Bulgaria", "Czech Republic", "Hungary",
-                      "Moldova", "Poland", "Romania", "Slovakia", "Ukraine")
-
-trust2018 <- trust2018 %>%
-  mutate(
-    region = case_when(
-      country_name %in% russia_caucasus_countries ~ "Russia/Caucasus/Central Asia",
-      country_name %in% europe_countries ~ "Europe",
-      TRUE ~ region  # leave as-is if no match
-    )
-  )
-```
-
-```{r}
-#| context: setup
-
-trust2020 <- trust2020 %>%
-  rename(country_name = COUNTRYNEW)
-```
-
-```{r}
-#| context: setup
-
-trust_change <- trust2020 %>%
-  inner_join(trust2018, by = "country_name", suffix = c("_2018", "_2020")) %>%
-  mutate(change = percent_2020 - percent_2018) %>%
-  select(country_name, region_2020, percent_2018, percent_2020, change) %>%
-  rename(region = region_2020)
+trust2018 <- read.csv(here::here("trust2018.csv"))
+trust2020 <- read.csv(here::here("trust2020.csv"))
+trust_change <- read.csv(here::here("trustchange.csv"))
+df_wgm2018 <- read.csv(here::here("wgm2018.csv"))
+df_wgm2020 <- read.csv(here::here("wgm2020.csv"))
 ```
 
 # Trust Across Regions {.tabset}
+
+## inputs {.sidebar}
 
 ```{r}
 checkboxGroupInput("region_select", "Choose Regions:",
@@ -148,10 +44,6 @@ checkboxGroupInput("region_select", "Choose Regions:",
                    selected = c("Africa", "Americas", "Asia", "Europe", 
                                "Middle East and North Africa", "Russia/Caucasus/Central Asia"))
 ```
-
-## Global Region Trends (Row 1) 
-
-Explore how attitudes toward scientists and scientific information shifted between 2018 and 2020.
 
 ## Global Trust in Scientists Plots (Row 2) {height = 70%}
 
@@ -223,6 +115,8 @@ knitr::kable(trusted_by_2020)
 
 # Country Trends Over Time
 
+## labels {.sidebar} 
+
 ```{r}
 sliderInput("change_range", "Select Trust Change Range (%):",
             min = -40, max = 40, value = c(-10, 10))
@@ -250,7 +144,7 @@ top5 <- trust_change %>%
     ) %>%
   select(Country, `Percent Change`)
 
-knitr::kable(top5[, 2:3], digits = 2)
+knitr::kable(top5, digits = 2)
 ```
 
 ```{r}
@@ -266,7 +160,7 @@ bot5 <- trust_change %>%
     ) %>%
   select(Country, `Percent Change`)
 
-knitr::kable(bot5[, 2:3], digits = 2)
+knitr::kable(bot5, digits = 2)
 ```
 
 ### Biggest Decrease
@@ -282,13 +176,6 @@ valueBoxOutput("biggest_increase")
 ```
 
 ```{r}
-trust_change %>% 
-  arrange(change) %>%
-  head(1) %>%
-  pull(country_name)
-```
-
-```{r}
 #| context: server
 
 filtered_2018 <- reactive({
@@ -300,7 +187,7 @@ output$plot.2018 <- renderPlot({
   ggplot(
     filtered_2018(), 
     aes(x = percent)) +
-    geom_histogram(binwidth = 3, fill = "#65a345", color = "white") +
+    geom_density(fill = "#65a345", alpha = .5) +
     labs(title = "Trust in Scientists (2018)", 
          x = "% Trust",
          y = "") +
@@ -327,7 +214,7 @@ output$plot.2020 <- renderPlot({
   ggplot(
     filtered_2020(), 
     aes(x = percent)) +
-    geom_histogram(binwidth = 3, fill = "#65a345", color = "white") +
+    geom_density(fill = "#65a345", alpha = .5) +
     labs(title = "Trust in Scientists (2020)", 
          x = "% Trust",
          y = "") +
@@ -365,19 +252,19 @@ output$change_lollipop <- renderPlot({
 })
 
 output$biggest_increase <- renderValueBox({
-  top_country <- filtered_change() %>% arrange(desc(change)) %>% head(1) %>% pull(country_name)
+  top_country <- filtered_change() %>% arrange(desc(change)) %>% head(1)
   
   if (nrow(top_country) == 0) {
     valueBox(
       value = "No countries",
-      subtitle = "Biggest Increase",
+      subtitle = "Highest Percentage",
       icon = icon("arrow-up"),
       color = "green"
     )
   } else {
     valueBox(
       value = paste0(as.character(top_country$country_name, ": +", round(top_country$change, 1), "%")),
-      subtitle = "Biggest Increase",
+      subtitle = "Highest Percentage",
       icon = icon("arrow-up"),
       color = "green"
     )
@@ -385,20 +272,19 @@ output$biggest_increase <- renderValueBox({
 })
 
 output$biggest_decrease <- renderValueBox({
-  bottom_country <- filtered_change() %>% arrange(change) %>% head(1) %>%
-    pull(country_name)
+  bottom_country <- filtered_change() %>% arrange(change) %>% head(1)
   
   if (nrow(bottom_country) == 0) {
     valueBox(
       value = "No countries",
-      subtitle = "Biggest Decrease",
+      subtitle = "Lowest Percentage",
       icon = icon("arrow-down"),
       color = "red"
     )
   } else {
     valueBox(
       value = paste0(as.character(bottom_country$country_name, ": ", round(bottom_country$change, 1), "%")),
-      subtitle = "Biggest Decrease",
+      subtitle = "Lowest Percentage",
       icon = icon("arrow-down"),
       color = "red"
     )
